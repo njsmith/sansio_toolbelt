@@ -1,0 +1,2 @@
+pytest >= 3.1  # for the -W error option
+pytest-cov

@@ -1,0 +1,26 @@
+language: python
+python:
+  - 2.7
+  - 3.3  # probably irrelevant but so far supporting it has been free
+  - 3.4
+  - 3.5
+  - 3.6
+  - 3.7-dev
+sudo: false
+dist: trusty
+
+matrix:
+  include:
+    - os: linux
+      language: python
+      python: 3.6
+      env: DOC_BUILD=1
+    - os: linux
+      language: generic
+      env: PYPY_VERSION=pypy3.5-5.7.1-beta
+    - os: linux
+      language: generic
+      env: PYPY_VERSION=pypy-5.7.1
+
+script:
+  - ci/travis.sh
