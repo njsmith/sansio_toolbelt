@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
 
+# return the match separately?
+#   actually for http I guess we don't really need this
+# error out on two calls to search with different needles and no data removed
+# in between?
+
 import sys
 import operator
 
-class IOBuffer(object):
-    def __init__(self):
-        self._data = bytearray()
-
-    def __delitem__(self, slice_):
-        if slice_.start is not None or slice_.step is not None:
-            raise IndexError("I only support deletion like: del buf[:n]")
-        del self._data[slice_]
-
+NEED_DATA = 1
+IMPOSSIBLE = 2
 
 class IOBuffer(object):
     """An efficient I/O buffer."""
 
     def __init__(self):
         self._data = bytearray()
+        self._have_eof = False
         # These are both absolute offsets into self._data:
         self._start = 0
         self._looked_at = 0
         self._looked_for = None
+
+    def _need_data_return(self):
+        if self._have_eof:
+            return IMPOSSIBLE
+        else:
+            return NEED_DATA
 
     def __bool__(self):
         return bool(len(self))
@@ -36,27 +41,13 @@ class IOBuffer(object):
     def __len__(self):
         return len(self._data) - self._start
 
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            start = idx.start
-            if start is None:
-                start = 0
-            if start >= 0:
-                start + self._start
-
-            stop = idx.stop
-            if stop is None:
-                stop = len(self)
-            if stop >= 0:
-                stop += self._start
-
-            return self._data[start:stop:idx.step]
+    def receive_data(self, byteslike):
+        if not byteslike:
+            self._have_eof = True
         else:
-            return self._data[self._start + operator.index(idx)]
-
-    def __iadd__(self, byteslike):
-        self._data += byteslike
-        return self
+            if self._have_eof:
+                raise RuntimeError("can't receive more data after EOF")
+            self._data += byteslike
 
     def __repr__(self):
         if len(self) > 50:
@@ -70,6 +61,9 @@ class IOBuffer(object):
         else:
             data_repr = repr(bytes(self))
         return "<IOBuffer with {} bytes: {}>".format(len(self), data_repr)
+
+    def at_eof(self):
+        return not(self) and self._have_eof
 
     # Note that starting in Python 3.4, deleting the initial n bytes from a
     # bytearray is amortized O(n), thanks to some excellent work by Antoine
@@ -92,7 +86,7 @@ class IOBuffer(object):
     # slightly clever thing where we delay calling compress() until we've
     # processed a whole event, which could in theory be slightly more
     # efficient than the internal bytearray support.)
-    def compress(self):
+    def _compress(self):
         # Heuristic: only compress if it lets us reduce size by a factor
         # of 2
         if self._start > len(self._data) // 2:
@@ -105,35 +99,46 @@ class IOBuffer(object):
             raise ValueError("not enough data to discard")
         else:
             self._start += count
+        self._compress()
+
+    def maybe_peek_at_most(self, count):
+        out = self._data[self._start:self._start + count]
+        if not out:
+            return self._need_data_return()
+        return out
+
+    def maybe_extract_at_most(self, count):
+        out = self.maybe_peek_at_most(count)
+        if out not in [NEED_DATA, IMPOSSIBLE]:
+            self._start += len(out)
+            self._compress()
+        return out
 
     def maybe_extract_exactly(self, count):
         if len(self) < count:
-            return None
+            return self._need_data_return()
         else:
             return self.maybe_extract_at_most(count)
 
-    def maybe_extract_at_most(self, count):
-        out = self._data[self._start:self._start + count]
-        if not out:
-            return None
-        self._start += len(out)
-        return out
+    def _search_start(self, needle, max_match_len):
+        if self._looked_for == needle:
+            return max(self._start, self._looked_at - max_match_len + 1)
+        else:
+            return self._start
 
     def maybe_extract_until_next(self, needle):
         # Returns extracted bytes on success (advancing offset), or None on
         # failure
-        if self._looked_for == needle:
-            search_start = max(self._start, self._looked_at - len(needle) + 1)
-        else:
-            search_start = self._start
+        search_start = self._search_start(needle, len(needle))
         offset = self._data.find(needle, search_start)
         if offset == -1:
             self._looked_at = len(self._data)
             self._looked_for = needle
-            return None
+            return self._need_data_return()
         new_start = offset + len(needle)
         out = self._data[self._start:new_start]
         self._start = new_start
+        self._compress()
         return out
 
     def maybe_extract_until_next_re(self, needle, max_match_len):
@@ -145,9 +150,10 @@ class IOBuffer(object):
         if match is None:
             self._looked_at = len(self._data)
             self._looked_for = needle
-            return None
+            return self._need_data_return()
         out = self._data[self._start:match.end()]
         self._start = match.end()
+        self._compress()
         return out
 
 import re
@@ -155,9 +161,10 @@ ambig_newline = re.compile(rb"\r\n|\n")
 two_ambig_newlines = re.compile(rb"\r\n\r\n|\n\n")
 
 def maybe_extract_lines(iobuf):
-    if iobuf[:1] == b"\n":
+    if iobuf.maybe_peek_at_most(1) == b"\n":
         iobuf.discard_exactly(1)
-    elif iobuf[:2] == b"\r\n":
+        return []
+    elif iobuf.maybe_peek_at_most(2) == b"\r\n":
         iobuf.discard_exactly(2)
         return []
     else:
