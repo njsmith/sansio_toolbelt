@@ -7,14 +7,12 @@ if [ -n "${PYPY_VERSION:-}" ]; then
     curl -Lo pypy.tar.bz2 https://bitbucket.org/squeaky/portable-pypy/downloads/${PYPY_VERSION}-linux_x86_64-portable.tar.bz2
     tar xaf pypy.tar.bz2
     # Something like:
-    #   pypy-5.6-linux_x86_64-portable
-    #   pypy3.5-5.7.1-beta-linux_x86_64-portable
-    # The slash prevents matching the tarball.
-    PYPY_DIR=$(echo pypy*/)
-    PYTHON_EXE=$(echo $PYPY_DIR/bin/pypy*)
-    $PYTHON_EXE -m ensurepip
-    $PYTHON_EXE -m pip install virtualenv
-    $PYTHON_EXE -m virtualenv testenv
+    #   pypy-5.6-linux_x86_64-portable/bin/pypy
+    #   pypy3.5-5.7.1-beta-linux_x86_64-portable/bin/pypy
+    PYPY=$(echo pypy*/bin/pypy)
+    $PYPY -m ensurepip
+    $PYPY -m pip install virtualenv
+    $PYPY -m virtualenv testenv
     # http://redsymbol.net/articles/unofficial-bash-strict-mode/#sourcing-nonconforming-document
     set +u
     source testenv/bin/activate
