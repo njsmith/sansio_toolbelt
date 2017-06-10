@@ -6,7 +6,7 @@ setup(
     name='sansio_toolbelt',
     version=__version__,
     description="An efficient I/O buffer and other useful tools for implementing Sans-IO network protocols",
-    long_description=open("README.rst").read()
+    long_description=open("README.rst").read(),
     author="Nathaniel J. Smith",
     author_email='njs@pobox.com',
     license="MIT",
