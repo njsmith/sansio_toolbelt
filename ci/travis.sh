@@ -5,9 +5,12 @@ set -eux -o pipefail
 # ${foo:-} means "$foo, unless that's undefined, in which case an empty string"
 if [ -n "${PYPY_VERSION:-}" ]; then
     curl -Lo pypy.tar.bz2 https://bitbucket.org/squeaky/portable-pypy/downloads/${PYPY_VERSION}-linux_x86_64-portable.tar.bz2
-    tar xavf pypy.tar.bz2
-    # something like "pypy-5.6-linux_x86_64-portable"
-    PYPY_DIR=$(echo pypy-*)
+    tar xaf pypy.tar.bz2
+    # Something like:
+    #   pypy-5.6-linux_x86_64-portable
+    #   pypy3.5-5.7.1-beta-linux_x86_64-portable
+    # The slash prevents matching the tarball.
+    PYPY_DIR=$(echo pypy*/)
     PYTHON_EXE=$(echo $PYPY_DIR/bin/pypy*)
     $PYTHON_EXE -m ensurepip
     $PYTHON_EXE -m pip install virtualenv
